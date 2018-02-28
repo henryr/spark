@@ -25,8 +25,8 @@ import org.apache.spark.sql.catalyst.rules.Rule
 * push down operations into [[CreateNamedStructLike]].
 */
 object SimplifyCreateStructOps extends Rule[LogicalPlan] {
-  override def apply(plan: LogicalPlan): LogicalPlan = {
-    plan.transformExpressionsUp {
+  override def apply(plan: LogicalPlan): LogicalPlan = plan transform { case p =>
+    p.transformExpressionsUp {
       // push down field extraction
       case GetStructField(createNamedStructLike: CreateNamedStructLike, ordinal, _) =>
         createNamedStructLike.valExprs(ordinal)
@@ -38,8 +38,8 @@ object SimplifyCreateStructOps extends Rule[LogicalPlan] {
 * push down operations into [[CreateArray]].
 */
 object SimplifyCreateArrayOps extends Rule[LogicalPlan] {
-  override def apply(plan: LogicalPlan): LogicalPlan = {
-    plan.transformExpressionsUp {
+  override def apply(plan: LogicalPlan): LogicalPlan = plan transform { case p =>
+    p.transformExpressionsUp {
       // push down field selection (array of structs)
       case GetArrayStructFields(CreateArray(elems), field, ordinal, numFields, containsNull) =>
         // instead f selecting the field on the entire array,
@@ -66,10 +66,9 @@ object SimplifyCreateArrayOps extends Rule[LogicalPlan] {
 * push down operations into [[CreateMap]].
 */
 object SimplifyCreateMapOps extends Rule[LogicalPlan] {
-  override def apply(plan: LogicalPlan): LogicalPlan = {
-    plan.transformExpressionsUp {
+  override def apply(plan: LogicalPlan): LogicalPlan = plan transform { case p =>
+    p.transformExpressionsUp {
       case GetMapValue(CreateMap(elems), key) => CaseKeyWhen(key, elems)
     }
   }
 }
-
