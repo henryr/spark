@@ -44,14 +44,13 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
           BooleanSimplification,
           SimplifyConditionals,
           SimplifyBinaryComparison,
-          SimplifyCreateStructOps,
-          SimplifyCreateArrayOps,
-          SimplifyCreateMapOps) :: Nil
+          SimplifyCreateStructOps) :: Nil
   }
 
   val idAtt = ('id).long.notNull
+  val nullableIdAtt = ('nullable_id).long
 
-  lazy val relation = LocalRelation(idAtt )
+  lazy val relation = LocalRelation(idAtt, nullableIdAtt)
 
   test("explicit get from namedStruct") {
     val query = relation
@@ -321,7 +320,7 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
       .select(
         CaseWhen(Seq(
           (EqualTo(2L, 'id), ('id + 1L)),
-          // these two are possible matches, we can't tell untill runtime
+          // these two are possible matches, we can't tell until runtime
           (EqualTo(2L, ('id + 1L)), ('id + 2L)),
           (EqualTo(2L, 'id + 2L), Literal.create(null, LongType)),
           // this is a definite match (two constants),
@@ -330,5 +329,31 @@ class ComplexTypesSuite extends PlanTest with ExpressionEvalHelper {
           (Literal.TrueLiteral, 'id))) as "a")
       .analyze
     comparePlans(Optimizer execute rel, expected)
+  }
+
+  test("SPARK-23500: Simplify complex ops that aren't at the plan root") {
+    // If nullable attributes aren't used, the array and map test cases fail because array
+    // and map indexing can return null so the output is marked nullable.
+    val structRel = relation
+      .select(GetStructField(CreateNamedStruct(Seq("att1", 'nullable_id)), 0, None) as "foo")
+      .groupBy($"foo")("1").analyze
+    val structExpected = relation
+      .select('nullable_id as "foo")
+      .groupBy($"foo")("1").analyze
+    comparePlans(Optimizer execute structRel, structExpected)
+
+     val arrayRel = relation
+       .select(GetArrayItem(CreateArray(Seq('nullable_id, 'nullable_id + 1L)), 0) as "a1")
+       .groupBy($"a1")("1").analyze
+     val arrayExpected = relation.select('nullable_id as "a1").groupBy($"a1")("1").analyze
+     comparePlans(Optimizer execute arrayRel, arrayExpected)
+
+    val mapRel = relation
+      .select(GetMapValue(CreateMap(Seq("id", 'nullable_id)), "id") as "m1")
+      .groupBy($"m1")("1").analyze
+    val mapExpected = relation
+      .select('nullable_id as "m1")
+      .groupBy($"m1")("1").analyze
+    comparePlans(Optimizer execute mapRel, mapExpected)
   }
 }
